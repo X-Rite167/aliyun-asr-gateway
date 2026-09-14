@@ -34,7 +34,7 @@ spec:
         - name: gateway
           image: ghcr.io/x-rite167/aliyun-asr-gateway@sha256:9feb73f56faeaf888bd0b8708d23a36799b04320325f9a397f77cfc5fa86286d
           imagePullPolicy: IfNotPresent
-          command: ["uvicorn"]
+          command: ["/opt/venv/bin/uvicorn"]
           args: ["app:app", "--host", "0.0.0.0", "--port", "8091"]
           env:
             - name: ALIYUN_ASR_MODEL
