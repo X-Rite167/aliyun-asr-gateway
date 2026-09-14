@@ -164,3 +164,25 @@ def test_gateway_maps_litellm_model_to_dashscope_asr_model(monkeypatch):
     payload = provider.await_args.args[0]
     assert payload["model"] == "qwen3-asr-flash"
     assert response.json()["choices"][0]["message"]["content"] == "测试转写"
+
+
+def test_gateway_accepts_litellm_custom_provider_path_without_v1(monkeypatch):
+    monkeypatch.setattr(app, "_validate_public_url", AsyncMock(return_value=None))
+    provider = AsyncMock(return_value={
+        "object": "chat.completion",
+        "choices": [{"message": {"role": "assistant", "content": "别名路径"}}],
+    })
+    monkeypatch.setattr(app, "_dashscope_compatible", provider)
+    response = client.post(
+        "/chat/completions",
+        json={
+            "model": "qwen-audio-3.0-asr-flash",
+            "messages": [{"role": "user", "content": [{
+                "type": "input_audio",
+                "input_audio": {"data": "https://media.example.com/a.wav"},
+            }]}],
+            "stream": False,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["choices"][0]["message"]["content"] == "别名路径"
