@@ -48,7 +48,7 @@ class ChatCompletionRequest(BaseModel):
 
 
 COMPATIBLE_MODEL_ALIASES = {"qwen3-asr-flash"}
-NATIVE_MODEL_ALIASES = {"qwen-audio-3.0-asr-flash", "qwen-audio-3.0-asr-flash-filetrans"}
+NATIVE_MODEL_ALIASES = {"qwen-asr", "qwen-audio-3.0-asr-flash", "qwen-audio-3.0-asr-flash-filetrans"}
 
 
 def _reconstruct_provider_messages(messages: list[ChatMessage]) -> list[dict[str, Any]]:

@@ -184,6 +184,20 @@ def test_native_path_threads_language_from_extra_body(monkeypatch):
     assert transcribe.await_args.args[1] == "en"
 
 
+def test_gateway_accepts_qwen_asr_public_alias_to_native(monkeypatch):
+    monkeypatch.setattr(app, "_validate_public_url", AsyncMock(return_value=None))
+    transcribe = AsyncMock(return_value="公开别名")
+    monkeypatch.setattr(app, "_transcribe", transcribe)
+    response = client.post("/v1/chat/completions", json={
+        "model": "qwen-asr",
+        "messages": [{"role": "user", "content": [{"type": "input_audio", "input_audio": {"data": "https://media.example.com/a.wav"}}]}],
+        "stream": False,
+    })
+    assert response.status_code == 200
+    assert response.json()["choices"][0]["message"]["content"] == "公开别名"
+    transcribe.assert_awaited_once()
+
+
 def test_gateway_accepts_native_path_without_v1(monkeypatch):
     monkeypatch.setattr(app, "_validate_public_url", AsyncMock(return_value=None))
     monkeypatch.setattr(app, "_transcribe", AsyncMock(return_value="原生路径"))
