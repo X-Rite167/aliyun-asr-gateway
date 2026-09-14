@@ -194,4 +194,4 @@ def test_gateway_accepts_litellm_base_url_probe(monkeypatch):
         "params": {"prompt": ["What's 1 + 1?"], "max_tokens": 16},
     })
     assert response.status_code == 200
-    assert response.json()["object"] == "chat.completion"
+    assert response.json() == {"data": [{"output": ["ok"]}]}
