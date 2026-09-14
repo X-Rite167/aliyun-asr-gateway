@@ -47,7 +47,8 @@ class ChatCompletionRequest(BaseModel):
     extra_body: dict[str, Any] | None = None
 
 
-COMPATIBLE_MODEL_ALIASES = {"qwen3-asr-flash", "qwen-audio-3.0-asr-flash"}
+COMPATIBLE_MODEL_ALIASES = {"qwen3-asr-flash"}
+NATIVE_MODEL_ALIASES = {"qwen-audio-3.0-asr-flash", "qwen-audio-3.0-asr-flash-filetrans"}
 
 
 def _reconstruct_provider_messages(messages: list[ChatMessage]) -> list[dict[str, Any]]:
@@ -96,6 +97,12 @@ def _extract_audio_input(messages: list[ChatMessage]) -> tuple[str, str | None]:
             # still required by this file-transcription adapter.
             continue
     raise HTTPException(status_code=400, detail="messages must contain a public input_audio URL")
+
+
+def _extract_language(extra_body: dict[str, Any] | None) -> str | None:
+    options = (extra_body or {}).get("asr_options") or {}
+    language = options.get("language")
+    return language if isinstance(language, str) and language else None
 
 
 def _chat_response(model: str, text: str) -> dict[str, Any]:
@@ -268,7 +275,7 @@ async def custom_base_probe(payload: dict[str, Any]):
 @app.post("/chat/completions")
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
-    if request.model not in {MODEL, *COMPATIBLE_MODEL_ALIASES}:
+    if request.model not in {*COMPATIBLE_MODEL_ALIASES, *NATIVE_MODEL_ALIASES}:
         raise HTTPException(status_code=400, detail=f"Unsupported model: {request.model}")
     if request.temperature != 0:
         raise HTTPException(status_code=400, detail="Only temperature=0 is supported")
@@ -290,7 +297,8 @@ async def chat_completions(request: ChatCompletionRequest):
                 provider_payload.pop("extra_body", None)
         return await _dashscope_compatible(provider_payload)
 
-    text = await _transcribe(file_url, None, prompt)
+    language = _extract_language(request.extra_body)
+    text = await _transcribe(file_url, language, prompt)
     if request.stream:
         return StreamingResponse(_chat_stream(request.model, text), media_type="text/event-stream")
     return _chat_response(request.model, text)

@@ -9,13 +9,14 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 app = FastAPI(title="Qwen ASR OpenAI Front Gateway", version="0.1.0")
-BACKEND_URL = os.getenv(
-    "ASR_BACKEND_URL",
-    "http://aliyun-asr-gateway.litellm.svc.cluster.local:8091",
+LITELLM_URL = os.getenv(
+    "LITELLM_BASE_URL",
+    "http://litellm.litellm.svc.cluster.local:4000/v1",
 ).rstrip("/")
-BACKEND_MODEL = os.getenv("ASR_BACKEND_MODEL", "qwen-audio-3.0-asr-flash-filetrans")
+LITELLM_API_KEY = os.getenv("LITELLM_API_KEY")
 PUBLIC_MODEL = os.getenv("ASR_PUBLIC_MODEL", "qwen-asr")
 DEFAULT_LANGUAGE = os.getenv("ASR_DEFAULT_LANGUAGE", "zh")
+DEFAULT_ENABLE_ITN = os.getenv("ASR_DEFAULT_ENABLE_ITN", "true").lower() == "true"
 
 
 class ChatMessage(BaseModel):
@@ -74,30 +75,23 @@ def _extract(messages: list[ChatMessage]) -> tuple[str, str | None]:
     raise HTTPException(status_code=400, detail="messages must contain a public input_audio URL")
 
 
-def _response(model: str, text: str) -> dict[str, Any]:
-    import time
-    import uuid
-    return {
-        "id": f"chatcmpl-{uuid.uuid4().hex}",
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": model,
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-    }
-
-
-async def _call_backend(payload: dict[str, Any]) -> dict[str, Any]:
+async def _call_litellm(payload: dict[str, Any]) -> dict[str, Any]:
+    if not LITELLM_API_KEY:
+        raise HTTPException(status_code=503, detail="Missing server configuration: LITELLM_API_KEY")
     async with httpx.AsyncClient(timeout=900) as client:
-        response = await client.post(f"{BACKEND_URL}/v1/audio/transcriptions", json=payload)
+        response = await client.post(
+            f"{LITELLM_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {LITELLM_API_KEY}"},
+            json=payload,
+        )
     if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"ASR backend error {response.status_code}: {response.text[:2000]}")
+        raise HTTPException(status_code=502, detail=f"LiteLLM error {response.status_code}: {response.text[:2000]}")
     return response.json()
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "backend": BACKEND_URL, "model": PUBLIC_MODEL}
+    return {"status": "ok", "downstream": LITELLM_URL, "model": PUBLIC_MODEL}
 
 
 @app.post("/v1/chat/completions")
@@ -107,15 +101,18 @@ async def chat_completions(request: ChatRequest):
         raise HTTPException(status_code=400, detail=f"Unsupported model: {request.model}")
     if request.temperature not in (None, 0):
         raise HTTPException(status_code=400, detail="Only temperature=0 is supported")
-    audio_url, prompt = _extract(request.messages)
+    _extract(request.messages)
     payload: dict[str, Any] = {
-        "file": audio_url,
-        "model": BACKEND_MODEL,
-        "language": DEFAULT_LANGUAGE,
-        "response_format": "json",
-        "temperature": 0,
+        "model": PUBLIC_MODEL,
+        "messages": [message.model_dump() for message in request.messages],
+        "stream": request.stream,
     }
-    if prompt:
-        payload["prompt"] = prompt
-    result = await _call_backend(payload)
-    return _response(request.model, str(result.get("text", "")))
+    if request.temperature is not None:
+        payload["temperature"] = request.temperature
+    extra_body = dict(request.extra_body or {})
+    asr_options = dict(extra_body.get("asr_options") or {})
+    asr_options.setdefault("language", DEFAULT_LANGUAGE)
+    asr_options.setdefault("enable_itn", DEFAULT_ENABLE_ITN)
+    extra_body["asr_options"] = asr_options
+    payload["extra_body"] = extra_body
+    return await _call_litellm(payload)

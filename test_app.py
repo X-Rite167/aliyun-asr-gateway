@@ -132,18 +132,10 @@ def test_compatible_gateway_wraps_request_for_dashscope(monkeypatch):
     assert kwargs["json"]["extra_body"]["asr_options"]["enable_itn"] is False
 
 
-def test_gateway_maps_litellm_model_to_dashscope_asr_model(monkeypatch):
-    monkeypatch.setattr(
-        app,
-        "DASHSCOPE_COMPATIBLE_BASE",
-        "https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
-    )
+def test_gateway_routes_qwen_audio_asr_flash_to_native_filetrans(monkeypatch):
     monkeypatch.setattr(app, "_validate_public_url", AsyncMock(return_value=None))
-    provider = AsyncMock(return_value={
-        "object": "chat.completion",
-        "choices": [{"message": {"role": "assistant", "content": "测试转写"}}],
-    })
-    monkeypatch.setattr(app, "_dashscope_compatible", provider)
+    transcribe = AsyncMock(return_value="测试转写")
+    monkeypatch.setattr(app, "_transcribe", transcribe)
 
     response = client.post(
         "/v1/chat/completions",
@@ -161,18 +153,40 @@ def test_gateway_maps_litellm_model_to_dashscope_asr_model(monkeypatch):
     )
 
     assert response.status_code == 200
-    payload = provider.await_args.args[0]
-    assert payload["model"] == "qwen3-asr-flash"
     assert response.json()["choices"][0]["message"]["content"] == "测试转写"
+    transcribe.assert_awaited_once()
+    assert transcribe.await_args.args[0] == "https://media.example.com/a.wav"
 
 
-def test_gateway_accepts_litellm_custom_provider_path_without_v1(monkeypatch):
+def test_native_path_threads_language_from_extra_body(monkeypatch):
     monkeypatch.setattr(app, "_validate_public_url", AsyncMock(return_value=None))
-    provider = AsyncMock(return_value={
-        "object": "chat.completion",
-        "choices": [{"message": {"role": "assistant", "content": "别名路径"}}],
-    })
-    monkeypatch.setattr(app, "_dashscope_compatible", provider)
+    transcribe = AsyncMock(return_value="ok")
+    monkeypatch.setattr(app, "_transcribe", transcribe)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "qwen-audio-3.0-asr-flash",
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "input_audio",
+                    "input_audio": {"data": "https://media.example.com/a.wav"},
+                }],
+            }],
+            "extra_body": {"asr_options": {"language": "en", "enable_itn": True}},
+            "stream": False,
+        },
+    )
+
+    assert response.status_code == 200
+    transcribe.assert_awaited_once()
+    assert transcribe.await_args.args[1] == "en"
+
+
+def test_gateway_accepts_native_path_without_v1(monkeypatch):
+    monkeypatch.setattr(app, "_validate_public_url", AsyncMock(return_value=None))
+    monkeypatch.setattr(app, "_transcribe", AsyncMock(return_value="原生路径"))
     response = client.post(
         "/chat/completions",
         json={
@@ -185,7 +199,7 @@ def test_gateway_accepts_litellm_custom_provider_path_without_v1(monkeypatch):
         },
     )
     assert response.status_code == 200
-    assert response.json()["choices"][0]["message"]["content"] == "别名路径"
+    assert response.json()["choices"][0]["message"]["content"] == "原生路径"
 
 
 def test_gateway_accepts_litellm_base_url_probe(monkeypatch):
@@ -203,7 +217,7 @@ def test_chat_reconstructs_provider_message_from_openai_audio_content(monkeypatc
     provider = AsyncMock(return_value={"choices": [{"message": {"role": "assistant", "content": "重构成功"}}]})
     monkeypatch.setattr(app, "_dashscope_compatible", provider)
     request_body = {
-        "model": "qwen-audio-3.0-asr-flash",
+        "model": "qwen3-asr-flash",
         "messages": [{"role": "user", "content": [
             {"type": "text", "text": "请转写"},
             {"type": "input_audio", "input_audio": {"data": "https://media.example.com/a.wav", "format": "wav"}},
