@@ -1,7 +1,3 @@
-# Qwen3-ASR 网关 Deployment + Service（Kite 最终版）
-# 重要：本 YAML 不包含 Secret 定义，引用现有 litellm/aliyun-asr-secret。
-# 使用前确认 ghcr.io 镜像对 Kite 节点可拉取；私有镜像需配置 imagePullSecrets。
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -98,20 +94,3 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: aliyun-asr-gateway
-  namespace: litellm
-  labels:
-    app.kubernetes.io/name: aliyun-asr-gateway
-spec:
-  type: ClusterIP
-  selector:
-    app.kubernetes.io/name: aliyun-asr-gateway
-  ports:
-    - name: http
-      port: 8091
-      targetPort: http
-      protocol: TCP
