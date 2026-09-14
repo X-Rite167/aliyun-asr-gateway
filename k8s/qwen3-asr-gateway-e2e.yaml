@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: aliyun-asr-gateway-e2e
+  namespace: litellm
+  labels:
+    app.kubernetes.io/name: aliyun-asr-gateway-e2e
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 240
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aliyun-asr-gateway-e2e
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: test
+          image: REPLACE_WITH_PULLABLE_PYTHON311_IMAGE
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-c"]
+          args:
+            - |
+              import json, urllib.request
+              endpoint = "http://aliyun-asr-gateway.litellm.svc.cluster.local:8091/v1/chat/completions"
+              payload = json.dumps({
+                  "model": "qwen-audio-3.0-asr-flash",
+                  "messages": [{"role": "user", "content": [{"type": "input_audio", "input_audio": {"data": "https://dashscope.oss-cn-beijing.aliyuncs.com/audios/welcome.mp3"}}]}],
+                  "stream": False,
+                  "extra_body": {"asr_options": {"enable_itn": False}}
+              }).encode("utf-8")
+              request = urllib.request.Request(endpoint, data=payload, headers={"Content-Type": "application/json"})
+              with urllib.request.urlopen(request, timeout=180) as response:
+                  body = json.loads(response.read().decode("utf-8"))
+                  text = body["choices"][0]["message"]["content"]
+                  assert response.status == 200, response.status
+                  assert text == "欢迎使用阿里云。", body
+                  print(json.dumps({"status": "PASS", "http": response.status, "text": text}, ensure_ascii=False))
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
