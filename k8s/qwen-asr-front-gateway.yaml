@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen-asr-front-gateway
+  namespace: litellm
+  labels:
+    app.kubernetes.io/name: qwen-asr-front-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: qwen-asr-front-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: qwen-asr-front-gateway
+    spec:
+      containers:
+        - name: front-gateway
+          image: ghcr.io/x-rite167/aliyun-asr-gateway:front-latest
+          imagePullPolicy: Always
+          command: ["/opt/venv/bin/uvicorn"]
+          args: ["front_gateway:app", "--host", "0.0.0.0", "--port", "8092"]
+          env:
+            - name: ASR_BACKEND_URL
+              value: http://aliyun-asr-gateway.litellm.svc.cluster.local:8091
+            - name: ASR_BACKEND_MODEL
+              value: qwen-audio-3.0-asr-flash-filetrans
+            - name: ASR_PUBLIC_MODEL
+              value: qwen-asr
+            - name: ASR_DEFAULT_LANGUAGE
+              value: zh
+          ports:
+            - name: http
+              containerPort: 8092
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qwen-asr-front-gateway
+  namespace: litellm
+  labels:
+    app.kubernetes.io/name: qwen-asr-front-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: qwen-asr-front-gateway
+  ports:
+    - name: http
+      port: 8092
+      targetPort: http
+      protocol: TCP
