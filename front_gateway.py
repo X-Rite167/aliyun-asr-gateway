@@ -76,12 +76,13 @@ def _extract(messages: list[ChatMessage]) -> tuple[str, str | None]:
 
 
 async def _call_litellm(payload: dict[str, Any]) -> dict[str, Any]:
-    if not LITELLM_API_KEY:
-        raise HTTPException(status_code=503, detail="Missing server configuration: LITELLM_API_KEY")
+    headers: dict[str, str] = {}
+    if LITELLM_API_KEY:
+        headers["Authorization"] = f"Bearer {LITELLM_API_KEY}"
     async with httpx.AsyncClient(timeout=900) as client:
         response = await client.post(
             f"{LITELLM_URL}/chat/completions",
-            headers={"Authorization": f"Bearer {LITELLM_API_KEY}"},
+            headers=headers,
             json=payload,
         )
     if response.status_code >= 400:

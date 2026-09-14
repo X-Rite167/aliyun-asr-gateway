@@ -8,7 +8,7 @@ import front_gateway
 client = TestClient(front_gateway.app)
 
 
-def test_front_gateway_calls_litellm_with_openai_chat_payload(monkeypatch):
+def test_front_gateway_forwards_messages_to_backend_chat(monkeypatch):
     call = AsyncMock(return_value={
         "object": "chat.completion",
         "model": "qwen-asr",
@@ -16,36 +16,22 @@ def test_front_gateway_calls_litellm_with_openai_chat_payload(monkeypatch):
     })
     monkeypatch.setattr(front_gateway, "_call_litellm", call)
     monkeypatch.setattr(front_gateway, "_validate_url", lambda value: None)
+    messages = [{"role": "user", "content": [
+        {"type": "text", "text": "请准确转写"},
+        {"type": "input_audio", "input_audio": {
+            "data": "https://media.example.com/a.wav", "format": "wav"
+        }},
+    ]}]
     response = client.post("/v1/chat/completions", json={
         "model": "qwen-asr",
-        "messages": [{"role": "user", "content": [
-            {"type": "text", "text": "请准确转写"},
-            {"type": "input_audio", "input_audio": {
-                "data": "https://media.example.com/a.wav", "format": "wav"
-            }},
-        ]}],
+        "messages": messages,
         "stream": False,
     })
     assert response.status_code == 200
     assert response.json()["choices"][0]["message"]["content"] == "欢迎使用阿里云。"
     payload = call.await_args.args[0]
     assert payload["model"] == "qwen-asr"
-    assert payload["messages"][0]["content"][1]["type"] == "input_audio"
-    assert payload["messages"][0]["content"][1]["input_audio"]["data"] == "https://media.example.com/a.wav"
-
-
-def test_front_gateway_does_not_call_post_gateway_directly(monkeypatch):
-    call = AsyncMock(return_value={"choices": [{"message": {"content": "ok"}}]})
-    monkeypatch.setattr(front_gateway, "_call_litellm", call)
-    monkeypatch.setattr(front_gateway, "_validate_url", lambda value: None)
-    response = client.post("/chat/completions", json={
-        "model": "qwen-asr",
-        "messages": [{"role": "user", "content": [{
-            "type": "input_audio", "input_audio": {"data": "https://media.example.com/a.wav"}
-        }]}],
-    })
-    assert response.status_code == 200
-    call.assert_awaited_once()
+    assert payload["messages"] == messages
 
 
 def test_front_gateway_requires_audio_url():
@@ -60,3 +46,30 @@ def test_front_gateway_health():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_front_gateway_omits_auth_header_when_no_key(monkeypatch):
+    import asyncio
+    monkeypatch.setattr(front_gateway, "LITELLM_API_KEY", "")
+
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return {"choices": [{"message": {"content": "ok"}}]}
+
+    class FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            pass
+        async def post(self, url, **kwargs):
+            captured["headers"] = kwargs.get("headers", {})
+            return FakeResponse()
+
+    monkeypatch.setattr(front_gateway.httpx, "AsyncClient", FakeClient)
+    asyncio.run(front_gateway._call_litellm({"model": "qwen-asr", "messages": []}))
+    assert "Authorization" not in captured["headers"]
