@@ -195,3 +195,23 @@ def test_gateway_accepts_litellm_base_url_probe(monkeypatch):
     })
     assert response.status_code == 200
     assert response.json() == {"data": [{"output": ["ok"]}]}
+
+
+def test_chat_reconstructs_provider_message_from_openai_audio_content(monkeypatch):
+    monkeypatch.setattr(app, "DASHSCOPE_COMPATIBLE_BASE", "https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setattr(app, "_validate_public_url", AsyncMock(return_value=None))
+    provider = AsyncMock(return_value={"choices": [{"message": {"role": "assistant", "content": "重构成功"}}]})
+    monkeypatch.setattr(app, "_dashscope_compatible", provider)
+    request_body = {
+        "model": "qwen-audio-3.0-asr-flash",
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": "请转写"},
+            {"type": "input_audio", "input_audio": {"data": "https://media.example.com/a.wav", "format": "wav"}},
+        ]}],
+        "stream": False,
+    }
+    response = client.post("/v1/chat/completions", json=request_body)
+    assert response.status_code == 200
+    payload = provider.await_args.args[0]
+    assert payload["model"] == "qwen3-asr-flash"
+    assert payload["messages"] == request_body["messages"]

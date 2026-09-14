@@ -50,6 +50,32 @@ class ChatCompletionRequest(BaseModel):
 COMPATIBLE_MODEL_ALIASES = {"qwen3-asr-flash", "qwen-audio-3.0-asr-flash"}
 
 
+def _reconstruct_provider_messages(messages: list[ChatMessage]) -> list[dict[str, Any]]:
+    """Rebuild only the OpenAI multimodal fields accepted by DashScope."""
+    rebuilt: list[dict[str, Any]] = []
+    for message in messages:
+        content = message.content
+        if isinstance(content, list):
+            items: list[dict[str, Any]] = []
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("type") == "text" and isinstance(item.get("text"), str):
+                    items.append({"type": "text", "text": item["text"]})
+                elif item.get("type") == "input_audio":
+                    audio = item.get("input_audio") or {}
+                    data = audio.get("data")
+                    if isinstance(data, str) and data:
+                        normalized_audio = {"data": data}
+                        if isinstance(audio.get("format"), str):
+                            normalized_audio["format"] = audio["format"]
+                        items.append({"type": "input_audio", "input_audio": normalized_audio})
+            rebuilt.append({"role": message.role, "content": items})
+        elif isinstance(content, str):
+            rebuilt.append({"role": message.role, "content": content})
+    return rebuilt
+
+
 def _extract_audio_input(messages: list[ChatMessage]) -> tuple[str, str | None]:
     for message in reversed(messages):
         content = message.content
@@ -252,13 +278,16 @@ async def chat_completions(request: ChatCompletionRequest):
     if request.model in COMPATIBLE_MODEL_ALIASES:
         provider_payload = {
             "model": COMPATIBLE_MODEL,
-            "messages": [message.model_dump() for message in request.messages],
+            "messages": _reconstruct_provider_messages(request.messages),
             "stream": request.stream,
         }
         if request.stream_options is not None:
             provider_payload["stream_options"] = request.stream_options
         if request.extra_body:
             provider_payload.update(request.extra_body)
+            if isinstance(request.extra_body.get("asr_options"), dict):
+                provider_payload["asr_options"] = request.extra_body["asr_options"]
+                provider_payload.pop("extra_body", None)
         return await _dashscope_compatible(provider_payload)
 
     text = await _transcribe(file_url, None, prompt)
