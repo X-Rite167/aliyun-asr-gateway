@@ -1,6 +1,6 @@
-# Qwen3-ASR 网关 Kubernetes 部署清单
-# 适用范围：业务方 -> LiteLLM -> 本网关 -> DashScope qwen3-asr-flash
-# 使用前必须替换 Deployment.image 为目标 Kite 集群可拉取的完整应用镜像。
+# Qwen3-ASR 网关 Deployment + Service（Kite 最终版）
+# 重要：本 YAML 不包含 Secret 定义，引用现有 litellm/aliyun-asr-secret。
+# 使用前确认 ghcr.io 镜像对 Kite 节点可拉取；私有镜像需配置 imagePullSecrets。
 
 apiVersion: apps/v1
 kind: Deployment
@@ -27,9 +27,6 @@ spec:
         app.kubernetes.io/name: aliyun-asr-gateway
         app.kubernetes.io/version: "0.2.2"
     spec:
-      # 若私有仓库需要认证，请取消注释并替换名称。
-      # imagePullSecrets:
-      #   - name: YOUR_IMAGE_PULL_SECRET
       containers:
         - name: gateway
           image: ghcr.io/x-rite167/aliyun-asr-gateway@sha256:9feb73f56faeaf888bd0b8708d23a36799b04320325f9a397f77cfc5fa86286d
