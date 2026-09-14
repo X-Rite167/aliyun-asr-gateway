@@ -32,7 +32,7 @@ spec:
       #   - name: YOUR_IMAGE_PULL_SECRET
       containers:
         - name: gateway
-          image: REPLACE_WITH_PRIVATE_REGISTRY/aliyun-asr-gateway:0.2.2
+          image: ghcr.io/x-rite167/aliyun-asr-gateway@sha256:9feb73f56faeaf888bd0b8708d23a36799b04320325f9a397f77cfc5fa86286d
           imagePullPolicy: IfNotPresent
           env:
             - name: ALIYUN_ASR_MODEL
