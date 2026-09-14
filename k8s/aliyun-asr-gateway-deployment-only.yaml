@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
         - name: gateway
-          image: ghcr.io/x-rite167/aliyun-asr-gateway@sha256:5fa4178351b7066b944673b9f6a28adbf5ec05d6b03c92c82a97c2647649f69d
+          image: ghcr.io/x-rite167/aliyun-asr-gateway@sha256:29fe7a2e5bf756c30a1e5316518f6c565b0c217e71d330cc55f9576b703639f5
           imagePullPolicy: IfNotPresent
           command: ["/opt/venv/bin/uvicorn"]
           args: ["app:app", "--host", "0.0.0.0", "--port", "8091"]
