@@ -233,6 +233,7 @@ async def transcriptions(request: TranscriptionRequest):
     return {"text": text}
 
 
+@app.post("/v1")
 @app.post("/chat/completions")
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):

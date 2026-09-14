@@ -186,3 +186,9 @@ def test_gateway_accepts_litellm_custom_provider_path_without_v1(monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["choices"][0]["message"]["content"] == "别名路径"
+
+
+def test_gateway_accepts_litellm_base_url_probe(monkeypatch):
+    response = client.post("/v1", json={"model": "qwen-audio-3.0-asr-flash", "messages": []})
+    assert response.status_code == 400
+    assert "messages must contain" in response.json()["detail"]
