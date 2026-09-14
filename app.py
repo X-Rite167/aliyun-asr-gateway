@@ -234,6 +234,15 @@ async def transcriptions(request: TranscriptionRequest):
 
 
 @app.post("/v1")
+async def custom_base_probe(payload: dict[str, Any]):
+    """Accept LiteLLM Custom-provider connectivity probes at the base URL.
+
+    LiteLLM may POST model/params without a chat `messages` field to the
+    configured API base before it sends the real /chat/completions request.
+    """
+    return _chat_response(str(payload.get("model") or MODEL), "")
+
+
 @app.post("/chat/completions")
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
